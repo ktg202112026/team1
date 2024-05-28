@@ -1,52 +1,86 @@
-// controllers/authController.js
+const bcrypt = require('bcrypt');
+const passport = require('passport');
+const User = require('../models/userModels');
 
-const express = require('express');
-const router = express.Router();
-const userModel = require('../models/userModel');
+// 회원가입 컨트롤러
+exports.registerUser = async (req, res) => {
+  const { username, password } = req.body;
 
-router.get('/login', (req, res) => {
-    res.render('login');
-});
-
-router.post('/login', async (req, res) => {
-    const { email, password } = req.body;
-    try {
-        const user = await userModel.signInUser(email, password);
-        req.session.userId = user.id;
-        res.redirect('/dashboard');
-    } catch (error) {
-        res.status(400).send('Invalid email or password');
+  try {
+    const existingUser = await User.findOne(username);
+    if (existingUser) {
+      return res.status(400).send('User already exists');
     }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User(username, hashedPassword);
+    await newUser.save();
+
+    res.send('User registered');
+  } catch (error) {
+    console.error('User registration failed:', error);
+    res.status(500).send('User registration failed');
+  }
+};
+
+// 로그인 컨트롤러
+exports.loginUser = passport.authenticate('local', {
+  successRedirect: '/',
+  failureRedirect: '/login',
+  failureFlash: true, // 실패 메시지 사용 여부
 });
 
-router.get('/register', (req, res) => {
-    res.render('register');
-});
+// 로그아웃 컨트롤러
+exports.logoutUser = (req, res) => {
+  req.logout();
+  res.send('Logged out');
+};
 
-router.post('/register', async (req, res) => {
-    const { email, password } = req.body;
-    try {
-        await userModel.createUser(email, password);
-        res.redirect('/login');
-    } catch (error) {
-        res.status(500).send('Error registering');
+// 현재 로그인된 사용자 확인 컨트롤러
+exports.getCurrentUser = (req, res) => {
+  if (req.isAuthenticated()) {
+    res.send(req.user);
+  } else {
+    res.status(401).send('Not authenticated');
+  }
+};
+
+// 사용자 정보 업데이트 컨트롤러
+exports.updateUser = async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    const existingUser = await User.findOne(username);
+    if (!existingUser) {
+      return res.status(404).send('User not found');
     }
-});
 
-router.get('/dashboard', (req, res) => {
-    if (!req.session.userId) {
-        return res.redirect('/login');
+    const hashedPassword = await bcrypt.hash(password, 10);
+    existingUser.password = hashedPassword;
+    await existingUser.save();
+
+    res.send('User updated');
+  } catch (error) {
+    console.error('User update failed:', error);
+    res.status(500).send('User update failed');
+  }
+};
+
+// 사용자 삭제 컨트롤러
+exports.deleteUser = async (req, res) => {
+  const { username } = req.body;
+
+  try {
+    const existingUser = await User.findOne(username);
+    if (!existingUser) {
+      return res.status(404).send('User not found');
     }
-    res.send('Welcome to the dashboard! <a href="/logout">Logout</a>');
-});
 
-router.get('/logout', (req, res) => {
-    req.session.destroy(err => {
-        if (err) {
-            return res.status(500).send('Error logging out');
-        }
-        res.redirect('/login');
-    });
-});
+    await existingUser.delete();
 
-module.exports = router;
+    res.send('User deleted');
+  } catch (error) {
+    console.error('User deletion failed:', error);
+    res.status(500).send('User deletion failed');
+  }
+};
