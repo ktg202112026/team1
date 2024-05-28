@@ -1,5 +1,5 @@
 // app.js
-// app.js
+require('dotenv').config();
 const express = require('express');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
@@ -87,6 +87,11 @@ app.get('/user', (req, res) => {
   }
 });
 // req.isAuthenticated()는 Passport에서 제공하는 함수입니다. 이 함수는 현재 요청의 인증 상태를 확인하는 데 사용됩니다.
+
+// Catch-all route to handle undefined routes
+app.use((req, res, next) => {
+  res.status(404).send('Sorry, cannot find that!');
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
