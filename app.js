@@ -54,7 +54,8 @@ passport.deserializeUser(async (id, done) => {
   const { data: user, error } = await supabase
     .from('users')
     .select('*')
-    .eq('id', id)
+    .eq('email', email)
+    .eq('password',password)
     .single();
 
   done(error, user);
