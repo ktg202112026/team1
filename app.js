@@ -1,16 +1,14 @@
-// app.js
 require('dotenv').config();
 const express = require('express');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const session = require('express-session');
 const cors = require('cors');
+const bcrypt = require('bcrypt');
+const supabase = require('./supabaseClient');
 
 const app = express();
 const PORT = 3000;
-
-// 예제니까 사용자 데이터를 메모리에 저장
-const users = [];
 
 // 미들웨어 설정
 app.use(cors({
@@ -26,39 +24,65 @@ app.use(session({
 }));
 app.use(passport.initialize());
 app.use(passport.session());
-// app.use(passport.initialize());와 app.use(passport.session());를 사용함으로써 요청마다 passport의 미들웨어가 작동하게 됩니다.
-// 이를 통해 사용자 인증 상태를 유지하고 확인할 수 있습니다.
 
 // Passport 로컬 전략 설정
-passport.use(new LocalStrategy((username, password, done) => {
-  const user = users.find(u => u.username === username);
-  if (!user) {
+passport.use(new LocalStrategy(async (username, password, done) => {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('username', username)
+    .single();
+
+  if (error || !user) {
     return done(null, false, { message: 'Incorrect username.' });
   }
-  if (user.password !== password) {
+
+  const isValidPassword = await bcrypt.compare(password, user.password);
+  if (!isValidPassword) {
     return done(null, false, { message: 'Incorrect password.' });
   }
+
   return done(null, user);
 }));
 
 passport.serializeUser((user, done) => {
-  done(null, user.username);
+  done(null, user.id);
   // 사용자의 ID를 세션에 저장
-  // 시리얼라이저에 담기는 내용 = res.send(req.user); 를 통해 프론트에 보내는 내용
 });
 
-passport.deserializeUser((username, done) => {
-  const user = users.find(u => u.username === username);
-  done(null, user);
+passport.deserializeUser(async (id, done) => {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  done(error, user);
 });
 
 // 회원가입 라우트
-app.post('/register', (req, res) => {
+app.post('/register', async (req, res) => {
   const { username, password } = req.body;
-  if (users.find(u => u.username === username)) {
+
+  const { data: existingUser, error: userError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('username', username)
+    .single();
+
+  if (existingUser) {
     return res.status(400).send('User already exists');
   }
-  users.push({ username, password });
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const { data, error } = await supabase
+    .from('users')
+    .insert([{ username, password: hashedPassword }]);
+
+  if (error) {
+    return res.status(500).send('User registration failed');
+  }
+
   res.send('User registered');
 });
 
